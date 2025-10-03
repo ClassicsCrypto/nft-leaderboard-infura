@@ -1,0 +1,41 @@
+name: Update NFT Leaderboard Data (Infura)
+
+on:
+  schedule:
+    # Runs every 4 hours (at 0, 4, 8, 12, 16, 20 minutes past the hour)
+    - cron: '0 */4 * * *'
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name' Install dependencies
+        run: pip install requests
+
+      - name' Run Python script to update leaderboard
+        env:
+          INFURA_PROJECT_ID: ${{ secrets.INFURA_PROJECT_ID }}
+          INFURA_PROJECT_SECRET: ${{ secrets.INFURA_PROJECT_SECRET }}
+        run: python update_script.py
+
+      - name' Commit and push if there are changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions-bot@github.com"
+          git add leaderboard.json
+          # The following lines commit only if there's a change
+          if ! git diff --staged --quiet; then
+            git commit -m "Update leaderboard data"
+            git push
+          else
+            echo "No changes to commit."
+          fi
