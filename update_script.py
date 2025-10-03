@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
 # Fetch credentials from GitHub Actions secrets
-PROJECT_ID = os.environ.get('f279733f4b9a426f83d988d0664ae96c')
-PROJECT_SECRET = os.environ.get('NtRlsAy1I29K1RQvOBwAQzjQGBHVTJxbgHtN3TUsLpXcX2j7bQE9lg')
+PROJECT_ID = os.environ.get('INFURA_PROJECT_ID')
+PROJECT_SECRET = os.environ.get('INFURA_PROJECT_SECRET')
 
 # NFT Details
 CONTRACT_ADDRESS = '0xc1374b803DFb1A9c87eaB9e76929222DBa3a8C39'
