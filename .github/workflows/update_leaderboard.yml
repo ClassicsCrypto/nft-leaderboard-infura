@@ -1,4 +1,4 @@
-name: Update NFT Leaderboard Data (Covalent)
+name: Update NFT Leaderboard Data (Alchemy)
 
 on:
   schedule:
@@ -22,7 +22,7 @@ jobs:
 
       - name: Run Python script to update leaderboard
         env:
-          COVALENT_API_KEY: ${{ secrets.COVALENT_API_KEY }}
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
         run: python update_script.py
 
       - name: Commit and push if there are changes
