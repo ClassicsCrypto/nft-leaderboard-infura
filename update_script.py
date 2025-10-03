@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 # --- CONFIGURATION ---
 API_KEY = os.environ.get('ALCHEMY_API_KEY')
 CONTRACT_ADDRESS = '0xc1374b803DFb1A9c87eaB9e76929222DBa3a8C39'
-# The token ID we are interested in, now as a lowercase hex string for comparison
-TARGET_TOKEN_ID_HEX = '0x33b821147a4f21f1565b99f55e51e1e87e2b831454593457193a0b4c9e42e86a'
+# The token ID we are interested in, now as an integer for robust comparison
+TARGET_TOKEN_ID = 233135866589270025735431199023256918527023659760796851524427037696933759150
 # -------------------
 
 def fetch_and_calculate_balances():
@@ -18,12 +18,10 @@ def fetch_and_calculate_balances():
     balances = {}
     page_key = None
     
-    # Use Alchemy's main RPC endpoint, not the NFT-specific one
     url = f"https://base-mainnet.g.alchemy.com/v2/{API_KEY}"
     
-    print("Starting to fetch all transfer events using alchemy_getAssetTransfers. This may take some time...")
+    print("Starting to fetch all transfer events using alchemy_getAssetTransfers...")
     while True:
-        # This is a low-level JSON-RPC request
         payload = {
             "id": 1,
             "jsonrpc": "2.0",
@@ -33,18 +31,16 @@ def fetch_and_calculate_balances():
                     "fromBlock": "0x0",
                     "toBlock": "latest",
                     "contractAddresses": [CONTRACT_ADDRESS],
-                    "category": ["erc1155"],
+                    # Broaden the search category to be safe
+                    "category": ["erc1155", "internal", "external"],
                     "withMetadata": False,
                     "excludeZeroValue": True,
-                    "pageKey": page_key # Will be None on the first request
+                    "pageKey": page_key
                 }
             ]
         }
         
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json"
-        }
+        headers = {"accept": "application/json", "content-type": "application/json"}
 
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
@@ -55,21 +51,21 @@ def fetch_and_calculate_balances():
         
         print(f"Processing {len(transfers)} transfer events...")
         for transfer in transfers:
-            # We must check the specific token ID within the transfer data
-            if transfer.get('erc1155Metadata') and transfer['erc1155Metadata'][0]['tokenId'] == TARGET_TOKEN_ID_HEX:
-                from_address = transfer.get('from', '').lower()
-                to_address = transfer.get('to', '').lower()
-                # The value is a hex string, convert it to an integer
-                amount = int(transfer['erc1155Metadata'][0]['value'], 16)
+            # Check if the transfer has the required ERC-1155 metadata
+            if transfer.get('erc1155Metadata'):
+                # Convert the token ID from the API (which is a hex string) to an integer for a reliable comparison
+                received_token_id = int(transfer['erc1155Metadata'][0]['tokenId'], 16)
 
-                # Subtract from the sender's balance (if not a mint from the zero address)
-                if from_address != '0x0000000000000000000000000000000000000000':
-                    balances[from_address] = balances.get(from_address, 0) - amount
-                
-                # Add to the receiver's balance
-                balances[to_address] = balances.get(to_address, 0) + amount
+                if received_token_id == TARGET_TOKEN_ID:
+                    from_address = transfer.get('from', '').lower()
+                    to_address = transfer.get('to', '').lower()
+                    amount = int(transfer['erc1155Metadata'][0]['value'], 16)
 
-        # Check for the next page of results
+                    if from_address != '0x0000000000000000000000000000000000000000':
+                        balances[from_address] = balances.get(from_address, 0) - amount
+                    
+                    balances[to_address] = balances.get(to_address, 0) + amount
+
         page_key = result.get('pageKey')
         if not page_key:
             print("No more pages. All events processed.")
@@ -77,7 +73,6 @@ def fetch_and_calculate_balances():
         else:
             print("Fetching next page...")
 
-    # Format the final balances into the leaderboard structure
     leaderboard = [{'address': addr, 'count': count} for addr, count in balances.items() if count > 0]
     leaderboard.sort(key=lambda x: x['count'], reverse=True)
     return leaderboard
