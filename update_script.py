@@ -4,66 +4,61 @@ import json
 from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
-API_KEY = os.environ.get('COVALENT_API_KEY')
+API_KEY = os.environ.get('ALCHEMY_API_KEY')
 CONTRACT_ADDRESS = '0xc1374b803DFb1A9c87eaB9e76929222DBa3a8C39'
-# The token ID we are interested in, as an integer for easy comparison
-TARGET_TOKEN_ID = 233135866589270025735431199023256918527023659760796851524427037696933759150
-CHAIN_NAME = 'base-mainnet'
-# The event signature for an ERC-1155 Transfer
-TRANSFER_SINGLE_TOPIC = '0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62'
+TOKEN_ID = '233135866589270025735431199023256918527023659760796851524427037696933759150'
 # -------------------
 
-def fetch_and_calculate_balances():
+def fetch_leaderboard():
+    """Fetches all token holders using the Alchemy NFT API and handles pagination."""
     if not API_KEY:
-        raise ValueError("COVALENT_API_KEY is not set in GitHub secrets.")
+        raise ValueError("ALCHEMY_API_KEY is not set in GitHub secrets.")
 
-    balances = {}
-    url = f"https://api.covalenthq.com/v1/{CHAIN_NAME}/events/address/{CONTRACT_ADDRESS}/?starting-block=1&ending-block=latest&page-size=1000&key={API_KEY}"
-
-    print("Starting to fetch all transaction events. This may take a moment...")
-    while url:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()['data']
-        items = data.get('items', [])
+    all_owners = []
+    page_key = None
+    
+    print("Starting to fetch data from Alchemy...")
+    while True:
+        # Alchemy's endpoint for getting owners for a specific ERC-1155 token ID
+        url = f"https://base-mainnet.g.alchemy.com/nft/v3/{API_KEY}/getOwnersForToken"
         
-        print(f"Processing {len(items)} events...")
-
-        for item in items:
-            # We only care about 'TransferSingle' events
-            if item.get('raw_log_topics', []) and item['raw_log_topics'][0] == TRANSFER_SINGLE_TOPIC:
-                # Decode the event parameters
-                params = {p['name']: p['value'] for p in item.get('decoded', {}).get('params', [])}
-                
-                # Check if the event is for our specific token ID
-                event_token_id = int(params.get('id', -1))
-                if event_token_id == TARGET_TOKEN_ID:
-                    from_address = params.get('from', '').lower()
-                    to_address = params.get('to', '').lower()
-                    amount = int(params.get('value', 0))
-
-                    # Subtract from the sender's balance (if not a mint)
-                    if from_address != '0x0000000000000000000000000000000000000000':
-                        balances[from_address] = balances.get(from_address, 0) - amount
-                    
-                    # Add to the receiver's balance
-                    balances[to_address] = balances.get(to_address, 0) + amount
+        params = {
+            'contractAddress': CONTRACT_ADDRESS,
+            'tokenId': TOKEN_ID,
+        }
+        if page_key:
+            params['pageKey'] = page_key
         
-        # Check for the next page of results
-        url = data['links'].get('next')
-        if url:
-            url += f"&key={API_KEY}" # Covalent's next link doesn't include the key
-            print("Fetching next page...")
+        headers = {"accept": "application/json"}
+        
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status() # Raise an error for bad responses
+        
+        data = response.json()
+        
+        # Add the owners from the current page to our list
+        owners_on_page = data.get('owners', [])
+        all_owners.extend(owners_on_page)
+        print(f"Fetched {len(owners_on_page)} owners. Total so far: {len(all_owners)}.")
+        
+        # Check for the next page using 'pageKey'
+        page_key = data.get('pageKey')
+        if not page_key:
+            print("No more pages to fetch. All data retrieved.")
+            break # Exit the loop if there's no more pageKey
 
-    print("All events processed. Finalizing leaderboard.")
-    # Format the balances into the leaderboard structure
-    leaderboard = [{'address': addr, 'count': count} for addr, count in balances.items() if count > 0]
+    # Process the raw data into the desired leaderboard format.
+    # Alchemy provides balances directly, so we don't need to calculate them.
+    leaderboard = [{'address': owner['ownerAddress'], 'count': owner['tokenBalances'][0]['balance']} for owner in all_owners]
+    
+    # Sort by count in descending order
     leaderboard.sort(key=lambda x: x['count'], reverse=True)
     return leaderboard
 
 def main():
-    print("Updating NFT leaderboard by processing transaction events...")
-    leaderboard_data = fetch_and_calculate_balances()
+    """Main function to run the script."""
+    print("Updating NFT leaderboard using Alchemy...")
+    leaderboard_data = fetch_leaderboard()
     
     output = {
         'last_updated': datetime.now(timezone.utc).isoformat(),
